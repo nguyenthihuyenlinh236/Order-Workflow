@@ -6,13 +6,13 @@ business endpoints, tables, order processing, inventory reservations, payment
 processing, Saga, Outbox, message listeners, queues, exchanges, or messaging
 workflows. `frontend/` is documentation only.
 
-| Component | Port | Database | Health |
-| --- | --- | --- | --- |
-| order-service | 8081 | order_db | `/actuator/health` |
-| inventory-service | 8082 | inventory_db | `/actuator/health` |
-| payment-service | 8083 | payment_db | `/actuator/health` |
-| PostgreSQL 16 | 5432 | Three databases in one container | Compose health check |
-| RabbitMQ 4 | 5672 / 15672 | AMQP / management UI | Compose health check |
+| Component         | Port         | Database                         | Health               |
+| ----------------- | ------------ | -------------------------------- | -------------------- |
+| order-service     | 8081         | order_db                         | `/actuator/health`   |
+| inventory-service | 8082         | inventory_db                     | `/actuator/health`   |
+| payment-service   | 8083         | payment_db                       | `/actuator/health`   |
+| PostgreSQL 16     | 5433         | Three databases in one container | Compose health check |
+| RabbitMQ 4        | 5672 / 15672 | AMQP / management UI             | Compose health check |
 
 ## Requirements
 

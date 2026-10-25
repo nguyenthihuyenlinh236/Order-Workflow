@@ -1,77 +1,156 @@
-# Resilient Order Workflow — personal development skeleton
+# Resilient Order Workflow — SETUP-01
 
-Initial **SETUP-01** project skeleton, built independently of the shared repository.
-This phase deliberately contains **no order processing, inventory reservation, payment logic, Saga, Outbox, or frontend app**.
+A new Java 17 / Spring Boot 3.5.7 / Maven project skeleton. Each service exposes
+Actuator health and connects to local PostgreSQL and RabbitMQ. There are no
+business endpoints, tables, order processing, inventory reservations, payment
+processing, Saga, Outbox, message listeners, queues, exchanges, or messaging
+workflows. `frontend/` is documentation only.
 
-## Components
-
-| Service | Tech | Database | Health endpoint |
+| Component | Port | Database | Health |
 | --- | --- | --- | --- |
-| Order | Spring Boot / Maven / Java 17 | `order_db` | http://localhost:8081/actuator/health |
-| Inventory | Spring Boot / Maven / Java 17 | `inventory_db` | http://localhost:8082/actuator/health |
-| Payment | Spring Boot / Maven / Java 17 | `payment_db` | http://localhost:8083/actuator/health |
-| Infra | PostgreSQL 16 + RabbitMQ management | Docker Compose | RabbitMQ UI: http://localhost:15672 |
-
-Each service has its own database inside **one PostgreSQL container** for local development. No tables or domain objects exist yet.
+| order-service | 8081 | order_db | `/actuator/health` |
+| inventory-service | 8082 | inventory_db | `/actuator/health` |
+| payment-service | 8083 | payment_db | `/actuator/health` |
+| PostgreSQL 16 | 5432 | Three databases in one container | Compose health check |
+| RabbitMQ 4 | 5672 / 15672 | AMQP / management UI | Compose health check |
 
 ## Requirements
 
-- **JDK 17** selected for Maven and runtime (`java -version`, `mvn -version`).
-- **Maven 3.6.3+** installed and on PATH.
-- Docker Desktop with Docker Compose v2.
-
-## Start (Windows PowerShell)
-
-From repository root:
+- JDK **17**, selected for both Maven and Java runtime.
+- Maven **3.6.3+** on PATH (validated with 3.9.9).
+- Docker Desktop running Linux containers, with Docker Compose v2.
+- Windows PowerShell 5.1+ or PowerShell 7.
 
 ```powershell
-Copy-Item .env.example .env
-docker compose up -d
+java -version
+mvn -version
+docker version
+docker compose version
+```
+
+`mvn -version` must report Java 17. If needed, set `$env:JAVA_HOME` to your JDK 17
+installation and prepend `"$env:JAVA_HOME\bin;"` to `$env:Path`.
+
+## Start infrastructure (Windows PowerShell)
+
+Run from the repository root. Create `.env` once; do not overwrite an existing
+local configuration:
+
+```powershell
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
+docker compose up -d --wait
 docker compose ps
 ```
 
-Next start **three separate PowerShell terminals** at the repository root:
+The default values are **local development examples**, not production credentials.
+Docker publishes infrastructure ports on loopback only. PostgreSQL initializes
+`order_db`, `inventory_db`, and `payment_db` on the first start of its data volume.
+Each database is owned by the local `POSTGRES_USER`; separate database users and
+production security are outside this skeleton's scope.
+
+## Build and test
+
+From the root:
 
 ```powershell
-cd order-service
-mvn spring-boot:run
+mvn clean verify
+```
+
+This builds three executable jars and runs one HTTP health smoke test per service.
+Tests use random HTTP ports and explicitly disable the PostgreSQL and RabbitMQ
+health contributors, so they do not require Docker. They verify application
+startup and the Actuator HTTP response; live infrastructure readiness must also
+be checked below. There are no domain tests because there is no business logic.
+
+## Run the services
+
+Open three PowerShell terminals at the repository root. **In each terminal**,
+load the same `.env` before starting Maven. Compose reads `.env` automatically;
+Spring Boot does not. This loader supports the unquoted `KEY=value` format in
+`.env.example` (no multiline values or inline comments):
+
+```powershell
+Get-Content .env | ForEach-Object {
+    $line = $_.Trim()
+    if ($line -and !$line.StartsWith('#')) {
+        $parts = $line -split '=', 2
+        if ($parts.Count -eq 2) {
+            [Environment]::SetEnvironmentVariable($parts[0].Trim(), $parts[1], 'Process')
+        }
+    }
+}
+```
+
+Then run one command per terminal:
+
+```powershell
+mvn -pl order-service spring-boot:run
 ```
 
 ```powershell
-cd inventory-service
-mvn spring-boot:run
+mvn -pl inventory-service spring-boot:run
 ```
 
 ```powershell
-cd payment-service
-mvn spring-boot:run
+mvn -pl payment-service spring-boot:run
 ```
 
-Once each process reports it has started, use a fourth terminal:
+Alternatively, after building, run `java -jar <service>/target/<service>-0.0.1-SNAPSHOT.jar`
+with the same environment variables. Services run on the host, outside Docker.
+
+## Verify live readiness
+
+With infrastructure healthy and all three services running, use a fourth terminal:
 
 ```powershell
-Invoke-RestMethod http://localhost:8081/actuator/health
-Invoke-RestMethod http://localhost:8082/actuator/health
-Invoke-RestMethod http://localhost:8083/actuator/health
+8081, 8082, 8083 | ForEach-Object {
+    $health = Invoke-RestMethod "http://localhost:$_/actuator/health"
+    if ($health.status -ne 'UP') { throw "Service on port $_ is not healthy" }
+    "Port $_ : $($health.status)"
+}
 ```
 
-Expected from each: `status: UP` (Spring Actuator JSON `{ "status": "UP" }`). Health includes checks of PostgreSQL and RabbitMQ when enabled by their starters.
+Expected: `UP` from each. Default application configuration retains both the
+PostgreSQL and RabbitMQ health contributors; a dependency failure makes overall
+health `DOWN` (HTTP 503). Health details are not exposed. If you customize service
+ports, adjust the checks accordingly.
 
-RabbitMQ management UI: http://localhost:15672 — login using `RABBITMQ_USER` and `RABBITMQ_PASSWORD` values in `.env`.
+RabbitMQ management: `http://localhost:15672`; use `RABBITMQ_USER` and
+`RABBITMQ_PASSWORD` from your local `.env`. Merely connecting for a health check
+does not install any messaging workflow.
 
-## Notes and troubleshooting
+## Stop and troubleshoot
 
-- `.env` is deliberately ignored by Git. The `application.yml` fallbacks are **local-only example credentials**; never deploy them as-is.
-- If port 5432, 5672, or 15672 is already occupied, stop the conflicting application/container or adjust port mappings and the matching service variables.
-- SQL files in `/docker-entrypoint-initdb.d/` execute only when the PostgreSQL volume is first created. Do **not** delete volumes on a real data store. On this empty local skeleton only, `docker compose down -v` resets all data.
-- These Spring Boot services run **on the host**, not inside Docker; `localhost` is correct in `application.yml`. When containerizing Java services later, switch to service hostnames `postgres` and `rabbitmq`.
-- If Java 24 is installed on your machine, select the Java 17 JDK for `JAVA_HOME` and ensure Maven is using it (see `mvn -version`).
-- Service-to-service calls, RabbitMQ queues/exchanges, error handling, and transaction coordination are **out of scope** for SETUP-01.
+- Stop Java services with Ctrl+C in their terminals.
+- Run `docker compose down` to stop infrastructure; named volumes retain data.
+- Initialization SQL only runs on **new** PostgreSQL volumes. Editing `.env`
+  credentials also does not update existing database roles or RabbitMQ users.
+- Only for disposable local data, `docker compose down -v` removes **all** local
+  PostgreSQL and RabbitMQ data so initialization can run again. Never use it on
+  data you need to keep.
+- For occupied ports, adjust `POSTGRES_PORT`, `RABBITMQ_PORT`,
+  `RABBITMQ_MANAGEMENT_PORT`, or the `*_SERVICE_PORT` variables in `.env`, reload
+  them into every service terminal, and recreate infrastructure as needed.
+- Diagnose dependencies with `docker compose logs postgres rabbitmq` and service
+  console output. Check that both containers are healthy before checking HTTP.
+- `POSTGRES_HOST` and `RABBITMQ_HOST` default to `localhost` for host processes.
+  Containerized application processes would require Compose service hostnames;
+  application containerization is not included here.
+- Keep `.env` out of version control. Use appropriate authentication, TLS, secret
+  management and restricted management access before any deployment.
 
-## Acceptance checklist
+## Layout
 
-- [ ] `docker compose ps` shows PostgreSQL and RabbitMQ healthy.
-- [ ] All three Spring Boot services start with JDK 17.
-- [ ] `/actuator/health` responds `UP` on ports 8081, 8082, and 8083.
-- [ ] No business flow or Saga code exists yet.
-- [ ] Changes remain in the **personal repository** until reviewed for integration into the shared project.
+```text
+pom.xml                    Maven parent and three-module reactor
+order-service/             Application entrypoint, configuration, health smoke test
+inventory-service/         Application entrypoint, configuration, health smoke test
+payment-service/           Application entrypoint, configuration, health smoke test
+infra/postgres/            First-start database initialization SQL
+docker-compose.yml         PostgreSQL and RabbitMQ only
+.env.example               Shared local settings for Compose and host services
+frontend/                  Placeholder documentation only
+```
+
+Work is prepared on `feature/setup-01-skeleton`; merge into `main` is a separate
+review decision.

@@ -1,0 +1,20 @@
+# Maven / Java
+**/target/
+*.class
+*.log
+hs_err_pid*
+
+# Local environment (retain the example)
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+.DS_Store
+Thumbs.db
